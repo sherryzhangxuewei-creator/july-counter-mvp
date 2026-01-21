@@ -17,11 +17,14 @@ function DashboardContent() {
   const [showToast, setShowToast] = useState(false)
   const [highlightRecordButton, setHighlightRecordButton] = useState(false)
   const [showMenu, setShowMenu] = useState(false)
-  const [treeShakeKey, setTreeShakeKey] = useState(0)
+  const [isTreeShaking, setIsTreeShaking] = useState(false)
   const [recordImageError, setRecordImageError] = useState(false)
   const [isRecordGifPlaying, setIsRecordGifPlaying] = useState(false)
   const [recordGifToken, setRecordGifToken] = useState(0)
   const gifTimerRef = useRef<number | null>(null)
+  const shakeTimerRef = useRef<number | null>(null)
+  const [isGifLoaded, setIsGifLoaded] = useState(false)
+  const gifImgRef = useRef<HTMLImageElement>(null)
   const recordButtonRef = useRef<HTMLButtonElement>(null)
   
   const {
@@ -76,16 +79,28 @@ function DashboardContent() {
 
   // 点击记录：先触发动效，再写入记录
   const handleRecordWithFx = () => {
-    setTreeShakeKey((k) => k + 1)
-    // 触发 GIF 播放一次：切到 GIF + token 强制从第一帧开始
+    // 触发树摇晃（用 class 切换，避免 remount 导致白屏）
+    setIsTreeShaking(true)
+    if (shakeTimerRef.current) window.clearTimeout(shakeTimerRef.current)
+    shakeTimerRef.current = window.setTimeout(() => setIsTreeShaking(false), 650)
+
+    // 触发 GIF 播放：重置 GIF 到第一帧
     setRecordImageError(false)
-    setIsRecordGifPlaying(true)
+    setIsGifLoaded(false)
+    
+    // 更新 token 来重置 GIF，开始加载
     setRecordGifToken((t) => t + 1)
+    
+    // 标记开始播放 GIF
+    setIsRecordGifPlaying(true)
+    
+    // 清理之前的结束 timer
     if (gifTimerRef.current) window.clearTimeout(gifTimerRef.current)
-    // 7 秒后切回静态图（GIF 实际时长 + 缓冲）
+    // 7 秒后切回静态图（GIF 实际时长 6秒 + 缓冲）
     gifTimerRef.current = window.setTimeout(() => {
       setIsRecordGifPlaying(false)
     }, 7000)
+    
     handleRecord()
   }
 
@@ -93,8 +108,22 @@ function DashboardContent() {
   useEffect(() => {
     return () => {
       if (gifTimerRef.current) window.clearTimeout(gifTimerRef.current)
+      if (shakeTimerRef.current) window.clearTimeout(shakeTimerRef.current)
     }
   }, [])
+
+  // 预加载 GIF，避免点击时才加载导致空白
+  // 预加载多个带不同 token 的 URL，确保浏览器缓存
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    // 预加载基础 GIF
+    const img1 = new Image()
+    img1.src = '/images/tree-button.gif?play=1'
+    // 预加载带 token 的 GIF（提前缓存）
+    const img2 = new Image()
+    img2.src = '/images/tree-button.gif?play=2'
+  }, [])
+
 
   // 处理重置数据
   const handleResetData = () => {
@@ -274,46 +303,71 @@ function DashboardContent() {
                 <button
                   ref={recordButtonRef}
                   onClick={handleRecordWithFx}
-                  key={treeShakeKey}
-                  className="
+                  className={`
                     w-36 h-36
-                    bg-white
+                    bg-transparent
                     flex items-center justify-center
                     shadow-xl
                     rounded-lg
-                    tree-shake
                     cursor-pointer
                     transition-transform
-                    border-2 border-gray-200
                     overflow-hidden
-                    p-2
                     relative
-                  "
+                    ${isTreeShaking ? 'tree-shake' : ''}
+                  `}
                   style={{
                     transformOrigin: '50% 100%'
                   }}
                 >
+                  {/* PNG 底图：始终存在，z-index 较低，确保在 GIF 加载期间始终可见 */}
                   <img
-                    src={
-                      isRecordGifPlaying
-                        ? `/images/tree-button.gif?play=${recordGifToken}`
-                        : '/images/tree-button.png'
-                    }
+                    src="/images/tree-button.png"
                     alt="记录一次"
-                    className="w-full h-full object-contain"
-                    onError={(e) => {
-                      // 如果图片加载失败：隐藏图片，显示占位符
-                      const target = e.target as HTMLImageElement
-                      target.style.display = 'none'
+                    className="absolute top-0 left-0 w-full h-full object-cover"
+                    style={{
+                      opacity: isRecordGifPlaying && isGifLoaded ? 0 : 1,
+                      zIndex: 1,
+                      transition: 'opacity 0ms ease-out',
+                      pointerEvents: 'none',
+                      width: '100%',
+                      height: '100%',
+                    }}
+                    onError={() => {
                       setRecordImageError(true)
                     }}
                   />
+
+                  {/* GIF 叠层：始终存在，通过 opacity 和 z-index 控制显示 */}
+                  <img
+                    ref={gifImgRef}
+                    src={`/images/tree-button.gif?play=${recordGifToken}`}
+                    alt="记录一次动效"
+                    className="absolute top-0 left-0 w-full h-full object-cover"
+                    style={{
+                      opacity: isRecordGifPlaying && isGifLoaded ? 1 : 0,
+                      zIndex: 2,
+                      transition: 'opacity 0ms ease-out',
+                      pointerEvents: 'none',
+                      width: '100%',
+                      height: '100%',
+                    }}
+                    onLoad={() => {
+                      // GIF 加载完成，可以显示了
+                      setIsGifLoaded(true)
+                    }}
+                    onError={() => {
+                      setRecordImageError(true)
+                      setIsRecordGifPlaying(false)
+                    }}
+                  />
+
                   {/* 占位符 - 仅当图片加载失败时显示（避免遮挡你的图片） */}
                   {recordImageError && (
                     <div className="absolute inset-0 flex items-center justify-center text-6xl pointer-events-none">
                       🌳
                     </div>
                   )}
+
                 </button>
                 <p className="mt-3 text-sm text-muted-foreground">点我记录一次</p>
               </div>
