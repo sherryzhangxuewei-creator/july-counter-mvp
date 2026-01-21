@@ -78,6 +78,24 @@ function DashboardContent() {
     }
   }
 
+  // 导出数据（本地备份）
+  const exportData = () => {
+    const data = {
+      goals: localStorage.getItem('goals'),
+      records: localStorage.getItem('records'),
+      onboardingCompleted: localStorage.getItem('onboardingCompleted'),
+    }
+
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `july-counter-backup-${new Date().toISOString()}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    setShowMenu(false)
+  }
+
   // 格式化时间戳
   const formatTimestamp = (timestamp: string) => {
     const date = new Date(timestamp)
@@ -94,31 +112,10 @@ function DashboardContent() {
     return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
   }
 
-  // 计算预计完成率
+  // 计算完成率：已记录次数/目标次数*100%
   const calculateCompletionRate = () => {
-    if (!currentGoal) return 0
-    
-    const now = new Date()
-    let startDate: Date
-    let endDate: Date
-    
-    if (currentGoal.period === 'year') {
-      startDate = new Date(now.getFullYear(), 0, 1)
-      endDate = new Date(now.getFullYear() + 1, 0, 1)
-    } else if (currentGoal.period === 'month') {
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1)
-      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 1)
-    } else {
-      startDate = currentGoal.startDate ? new Date(currentGoal.startDate) : now
-      endDate = currentGoal.endDate ? new Date(currentGoal.endDate) : new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000)
-    }
-    
-    const totalDays = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
-    const elapsedDays = (now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
-    const expectedProgress = (elapsedDays / totalDays) * currentGoal.targetAmount
-    
-    if (expectedProgress <= 0) return 0
-    return (currentGoal.completedAmount / expectedProgress) * 100
+    if (!currentGoal || currentGoal.targetAmount === 0) return 0
+    return (currentGoal.completedAmount / currentGoal.targetAmount) * 100
   }
 
   // 如果正在加载或需要跳转，显示加载状态
@@ -192,6 +189,12 @@ function DashboardContent() {
             {showMenu && (
               <div className="absolute right-0 mt-2 w-48 bg-card border border-border rounded-lg shadow-lg">
                 <button
+                  onClick={exportData}
+                  className="w-full text-left px-4 py-2 text-sm text-foreground hover:bg-accent rounded-lg"
+                >
+                  导出数据
+                </button>
+                <button
                   onClick={handleResetData}
                   className="w-full text-left px-4 py-2 text-sm text-destructive hover:bg-accent rounded-lg"
                 >
@@ -230,9 +233,9 @@ function DashboardContent() {
                       </p>
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground mb-1">预计完成率</p>
+                      <p className="text-xs text-muted-foreground mb-1">完成率</p>
                       <p className="text-lg font-semibold text-foreground">
-                        {completionRate.toFixed(0)}%
+                        {completionRate.toFixed(1)}%
                       </p>
                     </div>
                   </div>
@@ -240,20 +243,25 @@ function DashboardContent() {
               </div>
 
               {/* 主按钮：记录一次 */}
-              <div className="mb-8">
-                <Button
+              <div className="flex justify-center mt-24">
+                <button
                   ref={recordButtonRef}
-                  variant="primary"
-                  size="lg"
-                  className={`w-full py-6 text-lg transition-all ${
-                    highlightRecordButton
-                      ? 'ring-4 ring-primary ring-offset-2 animate-pulse'
-                      : ''
-                  }`}
                   onClick={handleRecord}
+                  style={{
+                    background: "linear-gradient(135deg, #6366f1 0%, #a855f7 100%)"
+                  }}
+                  className="
+                    w-36 h-36
+                    rounded-full
+                    text-white
+                    text-xl
+                    font-semibold
+                    flex items-center justify-center
+                    shadow-xl
+                  "
                 >
-                  记录一次 {currentGoal.incrementValue !== 1 ? `(+${currentGoal.incrementValue})` : ''}
-                </Button>
+                  记录一次
+                </button>
               </div>
 
               {/* 进度条 */}
