@@ -17,6 +17,11 @@ function DashboardContent() {
   const [showToast, setShowToast] = useState(false)
   const [highlightRecordButton, setHighlightRecordButton] = useState(false)
   const [showMenu, setShowMenu] = useState(false)
+  const [treeShakeKey, setTreeShakeKey] = useState(0)
+  const [recordImageError, setRecordImageError] = useState(false)
+  const [isRecordGifPlaying, setIsRecordGifPlaying] = useState(false)
+  const [recordGifToken, setRecordGifToken] = useState(0)
+  const gifTimerRef = useRef<number | null>(null)
   const recordButtonRef = useRef<HTMLButtonElement>(null)
   
   const {
@@ -61,13 +66,35 @@ function DashboardContent() {
     }
   }, [highlightRecordButton])
 
-  // 处理记录一次
+  // 处理记录一次（带树摇晃动画）
   const handleRecord = () => {
     if (currentGoal) {
       addRecord(currentGoal.id, currentGoal.incrementValue)
       setHighlightRecordButton(false) // 记录后取消高亮
     }
   }
+
+  // 点击记录：先触发动效，再写入记录
+  const handleRecordWithFx = () => {
+    setTreeShakeKey((k) => k + 1)
+    // 触发 GIF 播放一次：切到 GIF + token 强制从第一帧开始
+    setRecordImageError(false)
+    setIsRecordGifPlaying(true)
+    setRecordGifToken((t) => t + 1)
+    if (gifTimerRef.current) window.clearTimeout(gifTimerRef.current)
+    // 7 秒后切回静态图（GIF 实际时长 + 缓冲）
+    gifTimerRef.current = window.setTimeout(() => {
+      setIsRecordGifPlaying(false)
+    }, 7000)
+    handleRecord()
+  }
+
+  // 组件卸载时清理 timer
+  useEffect(() => {
+    return () => {
+      if (gifTimerRef.current) window.clearTimeout(gifTimerRef.current)
+    }
+  }, [])
 
   // 处理重置数据
   const handleResetData = () => {
@@ -243,25 +270,52 @@ function DashboardContent() {
               </div>
 
               {/* 主按钮：记录一次 */}
-              <div className="flex justify-center mt-24">
+              <div className="flex flex-col items-center mt-24 mb-12">
                 <button
                   ref={recordButtonRef}
-                  onClick={handleRecord}
-                  style={{
-                    background: "linear-gradient(135deg, #6366f1 0%, #a855f7 100%)"
-                  }}
+                  onClick={handleRecordWithFx}
+                  key={treeShakeKey}
                   className="
                     w-36 h-36
-                    rounded-full
-                    text-white
-                    text-xl
-                    font-semibold
+                    bg-white
                     flex items-center justify-center
                     shadow-xl
+                    rounded-lg
+                    tree-shake
+                    cursor-pointer
+                    transition-transform
+                    border-2 border-gray-200
+                    overflow-hidden
+                    p-2
+                    relative
                   "
+                  style={{
+                    transformOrigin: '50% 100%'
+                  }}
                 >
-                  记录一次
+                  <img
+                    src={
+                      isRecordGifPlaying
+                        ? `/images/tree-button.gif?play=${recordGifToken}`
+                        : '/images/tree-button.png'
+                    }
+                    alt="记录一次"
+                    className="w-full h-full object-contain"
+                    onError={(e) => {
+                      // 如果图片加载失败：隐藏图片，显示占位符
+                      const target = e.target as HTMLImageElement
+                      target.style.display = 'none'
+                      setRecordImageError(true)
+                    }}
+                  />
+                  {/* 占位符 - 仅当图片加载失败时显示（避免遮挡你的图片） */}
+                  {recordImageError && (
+                    <div className="absolute inset-0 flex items-center justify-center text-6xl pointer-events-none">
+                      🌳
+                    </div>
+                  )}
                 </button>
+                <p className="mt-3 text-sm text-muted-foreground">点我记录一次</p>
               </div>
 
               {/* 进度条 */}
