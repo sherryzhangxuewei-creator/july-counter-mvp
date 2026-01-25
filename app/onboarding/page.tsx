@@ -106,7 +106,12 @@ export default function Onboarding() {
 
     addGoal(newGoal)
     completeOnboarding()
-    router.push(`/?newGoal=true&goalName=${encodeURIComponent(formData.name)}`)
+    
+    // 确保 localStorage 写入完成后再跳转，避免竞态条件
+    // 使用 setTimeout 确保状态更新和 localStorage 写入完成
+    setTimeout(() => {
+      router.replace(`/?newGoal=true&goalName=${encodeURIComponent(formData.name)}`)
+    }, 100)
   }
 
   const handleNext = () => {

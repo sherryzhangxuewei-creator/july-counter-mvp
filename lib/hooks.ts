@@ -119,6 +119,48 @@ export function useGoals() {
     }
   }
 
+  // 删除目标及其关联记录
+  const deleteGoal = (goalId: string): boolean => {
+    try {
+      // 检查目标是否存在
+      const goalExists = goals.some(g => g.id === goalId)
+      if (!goalExists) {
+        console.warn(`Goal with id ${goalId} not found`)
+        return false
+      }
+
+      // 删除目标
+      const updatedGoals = goals.filter(goal => goal.id !== goalId)
+      setGoals(updatedGoals)
+
+      // 删除该目标的所有记录
+      const updatedRecords = records.filter(record => record.goalId !== goalId)
+      setRecords(updatedRecords)
+
+      // 更新 localStorage
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('goals', JSON.stringify(updatedGoals))
+        localStorage.setItem('records', JSON.stringify(updatedRecords))
+      }
+
+      // 如果删除的是当前目标，切换到其他目标或清空
+      if (currentGoalId === goalId) {
+        if (updatedGoals.length > 0) {
+          // 切换到第一个目标
+          setCurrentGoalId(updatedGoals[0].id)
+        } else {
+          // 没有目标了，清空当前目标ID
+          setCurrentGoalId(null)
+        }
+      }
+
+      return true
+    } catch (error) {
+      console.error('Failed to delete goal:', error)
+      return false
+    }
+  }
+
   // 重置所有数据
   const resetData = () => {
     setGoals([])
@@ -161,6 +203,7 @@ export function useGoals() {
     addGoal,
     updateGoal,
     addRecord,
+    deleteGoal,
     getTodayRecords,
     completeOnboarding,
     resetData,

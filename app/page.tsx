@@ -8,6 +8,7 @@ import Card from '@/components/Card'
 import Button from '@/components/Button'
 import Progress from '@/components/Progress'
 import Toast from '@/components/Toast'
+import ConfirmDialog from '@/components/ConfirmDialog'
 
 // Dashboard 内容组件
 function DashboardContent() {
@@ -26,6 +27,8 @@ function DashboardContent() {
   const [isGifLoaded, setIsGifLoaded] = useState(false)
   const gifImgRef = useRef<HTMLImageElement>(null)
   const recordButtonRef = useRef<HTMLButtonElement>(null)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
   
   const {
     goals,
@@ -36,17 +39,48 @@ function DashboardContent() {
     isLoading,
     setCurrentGoalId,
     addRecord,
+    deleteGoal,
     resetData,
   } = useGoals()
 
   // 首次访问检查：如果没有完成 onboarding 或没有目标，跳转到 onboarding
   useEffect(() => {
     if (!isLoading) {
-      if (onboardingCompleted === false || goals.length === 0) {
+      // 如果 URL 中有 newGoal 参数，说明刚创建了目标，不要跳转回 onboarding
+      const isNewGoal = searchParams.get('newGoal') === 'true'
+      if (!isNewGoal && (onboardingCompleted === false || goals.length === 0)) {
         router.replace('/onboarding')
       }
     }
-  }, [isLoading, onboardingCompleted, goals.length, router])
+  }, [isLoading, onboardingCompleted, goals.length, router, searchParams])
+
+  // 监听目标列表变化：如果删除后没有目标了，跳转到 onboarding
+  useEffect(() => {
+    if (!isLoading && goals.length === 0 && onboardingCompleted === true) {
+      // 延迟一下，避免与删除操作的跳转冲突
+      const timer = setTimeout(() => {
+        router.replace('/onboarding')
+      }, 200)
+      return () => clearTimeout(timer)
+    }
+  }, [goals.length, isLoading, onboardingCompleted, router])
+
+  // 点击外部关闭菜单
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
+      if (showMenu && !target.closest('[data-menu-container]')) {
+        setShowMenu(false)
+      }
+    }
+
+    if (showMenu) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside)
+      }
+    }
+  }, [showMenu])
 
   // 检测新目标创建
   useEffect(() => {
@@ -125,6 +159,39 @@ function DashboardContent() {
   }, [])
 
 
+  // 处理删除目标
+  const handleDeleteGoal = async () => {
+    if (!currentGoal) return
+
+    setIsDeleting(true)
+    
+    try {
+      // 保存目标名称用于提示
+      const goalName = currentGoal.name
+      const goalIdToDelete = currentGoal.id
+      const remainingGoalsCount = goals.length - 1
+      
+      const success = deleteGoal(goalIdToDelete)
+      
+      if (success) {
+        setShowDeleteDialog(false)
+        setShowMenu(false)
+        setToastMessage(`已删除目标：${goalName}`)
+        setShowToast(true)
+        // 删除后跳转逻辑由 useEffect 处理
+      } else {
+        setToastMessage('删除失败，请重试')
+        setShowToast(true)
+      }
+    } catch (error) {
+      console.error('Failed to delete goal:', error)
+      setToastMessage('删除失败，请重试')
+      setShowToast(true)
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   // 处理重置数据
   const handleResetData = () => {
     if (confirm('确定要重置所有数据吗？此操作不可恢复。')) {
@@ -175,7 +242,11 @@ function DashboardContent() {
   }
 
   // 如果正在加载或需要跳转，显示加载状态
-  if (isLoading || onboardingCompleted === false || goals.length === 0) {
+  // 如果 URL 中有 newGoal 参数，说明刚创建了目标，给更多时间加载数据
+  const isNewGoal = searchParams.get('newGoal') === 'true'
+  const shouldShowLoading = isLoading || (!isNewGoal && (onboardingCompleted === false || goals.length === 0))
+  
+  if (shouldShowLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-muted-foreground">加载中...</div>
@@ -193,6 +264,19 @@ function DashboardContent() {
         isVisible={showToast}
         onClose={() => setShowToast(false)}
         duration={6000}
+      />
+      
+      {/* 删除确认对话框 */}
+      <ConfirmDialog
+        isOpen={showDeleteDialog}
+        title="删除此目标？"
+        description="此操作无法撤销，将删除该目标及其所有记录。"
+        confirmText="删除"
+        cancelText="取消"
+        confirmVariant="destructive"
+        onConfirm={handleDeleteGoal}
+        onCancel={() => setShowDeleteDialog(false)}
+        isLoading={isDeleting}
       />
       
       <div className="flex h-screen">
@@ -233,7 +317,7 @@ function DashboardContent() {
         {/* 右侧详情面板 */}
         <main className="flex-1 overflow-y-auto relative">
           {/* 右上角菜单 */}
-          <div className="absolute top-4 right-4 z-10">
+          <div className="absolute top-4 right-4 z-10" data-menu-container>
             <button
               onClick={() => setShowMenu(!showMenu)}
               className="p-2 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground cursor-pointer"
@@ -243,7 +327,18 @@ function DashboardContent() {
               </svg>
             </button>
             {showMenu && (
-              <div className="absolute right-0 mt-2 w-48 bg-card border border-border rounded-lg shadow-lg">
+              <div className="absolute right-0 mt-2 w-48 bg-card border border-border rounded-lg shadow-lg" data-menu-container>
+                {currentGoal && (
+                  <button
+                    onClick={() => {
+                      setShowDeleteDialog(true)
+                      setShowMenu(false)
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm text-destructive hover:bg-accent rounded-lg"
+                  >
+                    删除目标
+                  </button>
+                )}
                 <button
                   onClick={exportData}
                   className="w-full text-left px-4 py-2 text-sm text-foreground hover:bg-accent rounded-lg"

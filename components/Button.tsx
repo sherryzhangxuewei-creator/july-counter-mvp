@@ -2,7 +2,7 @@ import { ButtonHTMLAttributes, ReactNode, forwardRef } from 'react'
 
 // 按钮组件 - 统一的按钮样式
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'outline' | 'ghost'
+  variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'destructive'
   size?: 'sm' | 'md' | 'lg'
   children: ReactNode
 }
@@ -20,7 +20,8 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(({
     primary: 'bg-primary text-primary-foreground hover:opacity-90 focus:ring-primary',
     secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80 focus:ring-secondary',
     outline: 'border border-border bg-transparent hover:bg-accent hover:text-accent-foreground focus:ring-ring',
-    ghost: 'hover:bg-accent hover:text-accent-foreground focus:ring-ring'
+    ghost: 'hover:bg-accent hover:text-accent-foreground focus:ring-ring',
+    destructive: 'bg-destructive text-destructive-foreground hover:opacity-90 focus:ring-destructive'
   }
   
   const sizes = {
