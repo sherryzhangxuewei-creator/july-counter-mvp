@@ -1,172 +1,271 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Goal, Record } from '@/types'
+import { supabase } from './supabase'
+import { useAuth } from './auth'
 
-// 状态管理 Hook - 管理目标和记录
+// 状态管理 Hook - 管理目标和记录（使用 Supabase）
 export function useGoals() {
+  const { user } = useAuth()
   const [goals, setGoals] = useState<Goal[]>([])
   const [records, setRecords] = useState<Record[]>([])
   const [currentGoalId, setCurrentGoalId] = useState<string | null>(null)
   const [onboardingCompleted, setOnboardingCompleted] = useState<boolean | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
+  // 从 Supabase 加载数据
+  const loadData = useCallback(async () => {
+    if (!user) {
+      setIsLoading(false)
+      return
+    }
+
+    try {
+      // 加载 goals
+      const { data: goalsData, error: goalsError } = await (supabase
+        .from('goals') as any)
+        .select('*')
+        .eq('user_uuid', user.id)
+        .order('created_at', { ascending: false })
+
+      if (goalsError) throw goalsError
+
+      // 转换数据库格式到前端格式
+      const formattedGoals: Goal[] = (goalsData || []).map((g: any) => ({
+        id: g.id,
+        name: g.name,
+        unit: g.unit,
+        targetAmount: g.target_amount,
+        completedAmount: g.completed_amount || 0,
+        period: g.period,
+        startDate: g.start_date,
+        endDate: g.end_date,
+        incrementValue: g.increment_value,
+        createdAt: g.created_at,
+        status: g.status || 'active',
+        archivedAt: g.archived_at,
+      }))
+
+      setGoals(formattedGoals)
+
+      // 设置第一个 active 目标为当前目标
+      const firstActiveGoal = formattedGoals.find(g => g.status !== 'archived')
+      if (firstActiveGoal) {
+        setCurrentGoalId(firstActiveGoal.id)
+      }
+
+      // 加载 records
+      const { data: recordsData, error: recordsError } = await (supabase
+        .from('records') as any)
+        .select('*')
+        .eq('user_uuid', user.id)
+        .order('timestamp', { ascending: false })
+
+      if (recordsError) throw recordsError
+
+      // 转换数据库格式到前端格式
+      const formattedRecords: Record[] = (recordsData || []).map((r: any) => ({
+        id: r.id,
+        goalId: r.goal_id,
+        value: r.value,
+        timestamp: r.timestamp,
+        date: r.date,
+      }))
+
+      setRecords(formattedRecords)
+
+      // 检查是否有目标（用于 onboarding 状态）
+      setOnboardingCompleted(formattedGoals.length > 0)
+    } catch (error) {
+      console.error('Failed to load data:', error)
+      setGoals([])
+      setRecords([])
+      setOnboardingCompleted(false)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [user])
+
   // 初始化数据
   useEffect(() => {
-    // 确保只在客户端执行
-    if (typeof window === 'undefined') return
-    
-    // 从 localStorage 读取数据
-    const savedGoals = localStorage.getItem('goals')
-    const savedRecords = localStorage.getItem('records')
-    const savedOnboarding = localStorage.getItem('onboardingCompleted')
-    
-    // 读取目标
-    if (savedGoals) {
-      try {
-        const parsed = JSON.parse(savedGoals)
-        // 确保旧数据有 status 字段（向后兼容）
-        const goalsWithStatus = parsed.map((goal: Goal) => ({
-          ...goal,
-          status: goal.status || 'active',
-        }))
-        setGoals(goalsWithStatus)
-        // 设置第一个 active 目标为当前目标
-        const firstActiveGoal = goalsWithStatus.find((g: Goal) => g.status !== 'archived')
-        if (firstActiveGoal) {
-          setCurrentGoalId(firstActiveGoal.id)
-        }
-      } catch (e) {
-        console.error('Failed to parse goals:', e)
-        setGoals([])
-      }
-    }
-    
-    // 读取记录
-    if (savedRecords) {
-      try {
-        setRecords(JSON.parse(savedRecords))
-      } catch (e) {
-        console.error('Failed to parse records:', e)
-        setRecords([])
-      }
-    }
-    
-    // 读取 onboarding 状态
-    if (savedOnboarding) {
-      setOnboardingCompleted(savedOnboarding === 'true')
-    } else {
-      setOnboardingCompleted(false)
-    }
-    
-    setIsLoading(false)
-  }, [])
+    loadData()
+  }, [loadData])
 
   // 添加目标
-  const addGoal = (goal: Goal) => {
-    // 确保新目标默认为 active 状态
-    const goalWithStatus = {
-      ...goal,
-      status: goal.status || 'active',
+  const addGoal = async (goal: Goal) => {
+    if (!user) return
+
+    try {
+      const goalWithStatus = {
+        ...goal,
+        status: goal.status || 'active',
+      }
+
+      // 转换前端格式到数据库格式
+      const { data, error } = await (supabase
+        .from('goals') as any)
+        .insert({
+          user_uuid: user.id,
+          name: goalWithStatus.name,
+          unit: goalWithStatus.unit,
+          target_amount: goalWithStatus.targetAmount,
+          completed_amount: goalWithStatus.completedAmount || 0,
+          period: goalWithStatus.period,
+          start_date: goalWithStatus.startDate || null,
+          end_date: goalWithStatus.endDate || null,
+          increment_value: goalWithStatus.incrementValue,
+          status: goalWithStatus.status,
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+
+      // 转换并添加到本地状态
+      const goalData = data as any
+      const newGoal: Goal = {
+        id: goalData.id,
+        name: goalData.name,
+        unit: goalData.unit,
+        targetAmount: goalData.target_amount,
+        completedAmount: goalData.completed_amount,
+        period: goalData.period,
+        startDate: goalData.start_date,
+        endDate: goalData.end_date,
+        incrementValue: goalData.increment_value,
+        createdAt: goalData.created_at,
+        status: goalData.status,
+        archivedAt: goalData.archived_at,
+      }
+
+      setGoals(prev => [...prev, newGoal])
+      setCurrentGoalId(newGoal.id)
+      setOnboardingCompleted(true)
+    } catch (error) {
+      console.error('Failed to add goal:', error)
+      throw error
     }
-    const newGoals = [...goals, goalWithStatus]
-    setGoals(newGoals)
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('goals', JSON.stringify(newGoals))
-    }
-    setCurrentGoalId(goalWithStatus.id)
   }
 
-  // 更新目标（用于修改增量值等）
-  const updateGoal = (goalId: string, updates: Partial<Goal>) => {
-    const updatedGoals = goals.map(goal => {
-      if (goal.id === goalId) {
-        return { ...goal, ...updates }
-      }
-      return goal
-    })
-    setGoals(updatedGoals)
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('goals', JSON.stringify(updatedGoals))
+  // 更新目标
+  const updateGoal = async (goalId: string, updates: Partial<Goal>) => {
+    if (!user) return
+
+    try {
+      const updateData: any = {}
+      if (updates.name !== undefined) updateData.name = updates.name
+      if (updates.unit !== undefined) updateData.unit = updates.unit
+      if (updates.targetAmount !== undefined) updateData.target_amount = updates.targetAmount
+      if (updates.completedAmount !== undefined) updateData.completed_amount = updates.completedAmount
+      if (updates.period !== undefined) updateData.period = updates.period
+      if (updates.startDate !== undefined) updateData.start_date = updates.startDate
+      if (updates.endDate !== undefined) updateData.end_date = updates.endDate
+      if (updates.incrementValue !== undefined) updateData.increment_value = updates.incrementValue
+      if (updates.status !== undefined) updateData.status = updates.status
+      if (updates.archivedAt !== undefined) updateData.archived_at = updates.archivedAt
+
+      const { error } = await (supabase
+        .from('goals') as any)
+        .update(updateData)
+        .eq('id', goalId)
+        .eq('user_uuid', user.id)
+
+      if (error) throw error
+
+      // 更新本地状态
+      setGoals(prev => prev.map(goal => 
+        goal.id === goalId ? { ...goal, ...updates } : goal
+      ))
+    } catch (error) {
+      console.error('Failed to update goal:', error)
+      throw error
     }
   }
 
   // 添加记录
-  const addRecord = (goalId: string, value: number) => {
-    const newRecord: Record = {
-      id: `r${Date.now()}`,
-      goalId,
-      value,
-      timestamp: new Date().toISOString(),
-      date: new Date().toISOString().split('T')[0],
-    }
-    
-    const newRecords = [newRecord, ...records]
-    setRecords(newRecords)
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('records', JSON.stringify(newRecords))
-    }
-    
-    // 更新目标的完成数量
-    const updatedGoals = goals.map(goal => {
-      if (goal.id === goalId) {
-        return {
-          ...goal,
-          completedAmount: goal.completedAmount + value,
-        }
-      }
-      return goal
-    })
-    setGoals(updatedGoals)
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('goals', JSON.stringify(updatedGoals))
-    }
-  }
+  const addRecord = async (goalId: string, value: number) => {
+    if (!user) return
 
-  // 完成 onboarding
-  const completeOnboarding = () => {
-    setOnboardingCompleted(true)
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('onboardingCompleted', 'true')
-    }
-  }
-
-  // 归档目标（将目标状态改为 archived）
-  const archiveGoal = (goalId: string): { success: boolean; archivedGoal?: Goal } => {
     try {
-      // 检查目标是否存在
-      const goalToArchive = goals.find(g => g.id === goalId)
-      if (!goalToArchive) {
-        console.warn(`Goal with id ${goalId} not found`)
-        return { success: false }
+      const now = new Date()
+      const date = now.toISOString().split('T')[0]
+
+      const { data, error } = await (supabase
+        .from('records') as any)
+        .insert({
+          user_uuid: user.id,
+          goal_id: goalId,
+          value,
+          timestamp: now.toISOString(),
+          date,
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+
+      // 添加到本地状态
+      const recordData = data as any
+      const newRecord: Record = {
+        id: recordData.id,
+        goalId: recordData.goal_id,
+        value: recordData.value,
+        timestamp: recordData.timestamp,
+        date: recordData.date,
       }
 
-      // 更新目标状态为 archived
+      setRecords(prev => [newRecord, ...prev])
+
+      // 更新目标的完成数量
+      const goal = goals.find(g => g.id === goalId)
+      if (goal) {
+        await updateGoal(goalId, {
+          completedAmount: goal.completedAmount + value,
+        })
+      }
+    } catch (error) {
+      console.error('Failed to add record:', error)
+      throw error
+    }
+  }
+
+  // 归档目标
+  const archiveGoal = async (goalId: string): Promise<{ success: boolean; archivedGoal?: Goal }> => {
+    if (!user) return { success: false }
+
+    try {
+      const now = new Date().toISOString()
+      const { error } = await (supabase
+        .from('goals') as any)
+        .update({
+          status: 'archived',
+          archived_at: now,
+        })
+        .eq('id', goalId)
+        .eq('user_uuid', user.id)
+
+      if (error) throw error
+
+      // 更新本地状态
       const updatedGoals = goals.map(goal => {
         if (goal.id === goalId) {
           return {
             ...goal,
             status: 'archived' as const,
-            archivedAt: new Date().toISOString(),
+            archivedAt: now,
           }
         }
         return goal
       })
       setGoals(updatedGoals)
 
-      // 更新 localStorage
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('goals', JSON.stringify(updatedGoals))
-      }
-
-      // 如果归档的是当前目标，切换到其他 active 目标或清空
+      // 如果归档的是当前目标，切换到其他 active 目标
       if (currentGoalId === goalId) {
         const activeGoals = updatedGoals.filter(g => g.status !== 'archived')
         if (activeGoals.length > 0) {
-          // 切换到第一个 active 目标
           setCurrentGoalId(activeGoals[0].id)
         } else {
-          // 没有 active 目标了，清空当前目标ID
           setCurrentGoalId(null)
         }
       }
@@ -179,17 +278,24 @@ export function useGoals() {
     }
   }
 
-  // 从归档恢复目标（将目标状态改回 active）
-  const restoreFromArchive = (goalId: string): boolean => {
-    try {
-      const goalToRestore = goals.find(g => g.id === goalId)
-      if (!goalToRestore) {
-        console.warn(`Goal with id ${goalId} not found`)
-        return false
-      }
+  // 从归档恢复目标
+  const restoreFromArchive = async (goalId: string): Promise<boolean> => {
+    if (!user) return false
 
-      // 更新目标状态为 active
-      const updatedGoals = goals.map(goal => {
+    try {
+      const { error } = await (supabase
+        .from('goals') as any)
+        .update({
+          status: 'active',
+          archived_at: null,
+        })
+        .eq('id', goalId)
+        .eq('user_uuid', user.id)
+
+      if (error) throw error
+
+      // 更新本地状态
+      setGoals(prev => prev.map(goal => {
         if (goal.id === goalId) {
           const { archivedAt, ...rest } = goal
           return {
@@ -198,17 +304,9 @@ export function useGoals() {
           }
         }
         return goal
-      })
-      setGoals(updatedGoals)
+      }))
 
-      // 更新 localStorage
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('goals', JSON.stringify(updatedGoals))
-      }
-
-      // 设置为当前目标
       setCurrentGoalId(goalId)
-
       return true
     } catch (error) {
       console.error('Failed to restore goal from archive:', error)
@@ -217,29 +315,58 @@ export function useGoals() {
   }
 
   // 恢复已删除的目标（undo功能 - 保留用于兼容）
-  const restoreGoal = (goal: Goal, goalRecords: Record[]): boolean => {
+  const restoreGoal = async (goal: Goal, goalRecords: Record[]): Promise<boolean> => {
+    if (!user) return false
+
     try {
-      // 恢复目标（确保状态为 active）
+      // 恢复目标
       const goalToRestore = {
         ...goal,
         status: 'active' as const,
       }
-      const updatedGoals = [...goals, goalToRestore]
-      setGoals(updatedGoals)
+
+      const { data, error } = await (supabase
+        .from('goals') as any)
+        .insert({
+          id: goalToRestore.id,
+          user_uuid: user.id,
+          name: goalToRestore.name,
+          unit: goalToRestore.unit,
+          target_amount: goalToRestore.targetAmount,
+          completed_amount: goalToRestore.completedAmount,
+          period: goalToRestore.period,
+          start_date: goalToRestore.startDate || null,
+          end_date: goalToRestore.endDate || null,
+          increment_value: goalToRestore.incrementValue,
+          status: goalToRestore.status,
+          created_at: goalToRestore.createdAt,
+        })
+        .select()
+        .single()
+
+      if (error) throw error
 
       // 恢复记录
-      const updatedRecords = [...records, ...goalRecords]
-      setRecords(updatedRecords)
+      if (goalRecords.length > 0) {
+        const recordsToInsert = goalRecords.map(r => ({
+          id: r.id,
+          user_uuid: user.id,
+          goal_id: r.goalId,
+          value: r.value,
+          timestamp: r.timestamp,
+          date: r.date,
+        }))
 
-      // 更新 localStorage
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('goals', JSON.stringify(updatedGoals))
-        localStorage.setItem('records', JSON.stringify(updatedRecords))
+        const { error: recordsError } = await (supabase
+          .from('records') as any)
+          .insert(recordsToInsert)
+
+        if (recordsError) throw recordsError
       }
 
-      // 设置为当前目标
+      // 重新加载数据
+      await loadData()
       setCurrentGoalId(goalToRestore.id)
-
       return true
     } catch (error) {
       console.error('Failed to restore goal:', error)
@@ -257,11 +384,9 @@ export function useGoals() {
     const now = new Date()
     const daysSinceCreation = Math.floor((now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24))
     
-    // 获取有记录的天数（去重）
     const uniqueDates = new Set(goalRecords.map(r => r.date))
     const daysWithRecords = uniqueDates.size
 
-    // 获取最近一次记录时间
     const lastRecord = goalRecords.length > 0 
       ? goalRecords.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0]
       : null
@@ -275,16 +400,26 @@ export function useGoals() {
     }
   }
 
+  // 完成 onboarding
+  const completeOnboarding = () => {
+    setOnboardingCompleted(true)
+  }
+
   // 重置所有数据
-  const resetData = () => {
-    setGoals([])
-    setRecords([])
-    setCurrentGoalId(null)
-    setOnboardingCompleted(false)
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('goals')
-      localStorage.removeItem('records')
-      localStorage.removeItem('onboardingCompleted')
+  const resetData = async () => {
+    if (!user) return
+
+    try {
+      // 删除所有 goals 和 records
+      await (supabase.from('records') as any).delete().eq('user_uuid', user.id)
+      await (supabase.from('goals') as any).delete().eq('user_uuid', user.id)
+      
+      setGoals([])
+      setRecords([])
+      setCurrentGoalId(null)
+      setOnboardingCompleted(false)
+    } catch (error) {
+      console.error('Failed to reset data:', error)
     }
   }
 

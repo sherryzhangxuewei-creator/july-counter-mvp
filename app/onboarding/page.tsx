@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useGoals } from '@/lib/hooks'
+import AuthGuard from '@/components/AuthGuard'
 import { goalTemplates } from '@/lib/mockData'
 import { GoalFormData, Goal, GoalPeriod } from '@/types'
 import Card from '@/components/Card'
@@ -74,7 +75,7 @@ export default function Onboarding() {
   }
 
   // Step 3: 创建目标
-  const handleCreateGoal = () => {
+  const handleCreateGoal = async () => {
     let startDate: string | undefined
     let endDate: string | undefined
 
@@ -104,11 +105,11 @@ export default function Onboarding() {
       createdAt: new Date().toISOString(),
     }
 
-    addGoal(newGoal)
+    await addGoal(newGoal)
     completeOnboarding()
     
-    // 确保 localStorage 写入完成后再跳转，避免竞态条件
-    // 使用 setTimeout 确保状态更新和 localStorage 写入完成
+    // 确保数据写入完成后再跳转，避免竞态条件
+    // 使用 setTimeout 确保状态更新完成
     setTimeout(() => {
       router.replace(`/?newGoal=true&goalName=${encodeURIComponent(formData.name)}`)
     }, 100)
@@ -159,9 +160,10 @@ export default function Onboarding() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container-desktop py-8">
-        <div className="max-w-2xl mx-auto">
+    <AuthGuard>
+      <div className="min-h-screen bg-background">
+        <div className="container-desktop py-8">
+          <div className="max-w-2xl mx-auto">
           <Card padding="lg">
             {/* 进度条 */}
             <div className="mb-8">
@@ -351,5 +353,6 @@ export default function Onboarding() {
         </div>
       </div>
     </div>
+    </AuthGuard>
   )
 }

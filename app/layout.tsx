@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
+import type { ReactNode } from 'react'
 import './globals.css'
+import { AuthProvider } from '@/lib/auth'
 
 export const metadata: Metadata = {
   title: 'July - Dashboard',
@@ -9,11 +11,15 @@ export const metadata: Metadata = {
 export default function RootLayout({
   children,
 }: {
-  children: React.ReactNode
+  children: ReactNode
 }) {
   return (
     <html lang="zh-CN">
-      <body>{children}</body>
+      <body>
+        <AuthProvider>
+          {children}
+        </AuthProvider>
+      </body>
     </html>
   )
 }

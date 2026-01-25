@@ -9,6 +9,8 @@ import Button from '@/components/Button'
 import Progress from '@/components/Progress'
 import Toast from '@/components/Toast'
 import ConfirmDialog from '@/components/ConfirmDialog'
+import AuthGuard from '@/components/AuthGuard'
+import { useAuth } from '@/lib/auth'
 
 // Dashboard 内容组件
 function DashboardContent() {
@@ -31,6 +33,7 @@ function DashboardContent() {
   const [isDeleting, setIsDeleting] = useState(false)
   const [deletedGoalData, setDeletedGoalData] = useState<{ goal: any; records: any[] } | null>(null)
   const [deletingGoalId, setDeletingGoalId] = useState<string | null>(null)
+  const { signOut } = useAuth()
   
   const {
     goals,
@@ -111,9 +114,9 @@ function DashboardContent() {
   }, [highlightRecordButton])
 
   // 处理记录一次（带树摇晃动画）
-  const handleRecord = () => {
+  const handleRecord = async () => {
     if (currentGoal) {
-      addRecord(currentGoal.id, currentGoal.incrementValue)
+      await addRecord(currentGoal.id, currentGoal.incrementValue)
       setHighlightRecordButton(false) // 记录后取消高亮
     }
   }
@@ -179,7 +182,7 @@ function DashboardContent() {
       // 延迟一下，让动画先播放
       await new Promise(resolve => setTimeout(resolve, 350))
       
-      const result = archiveGoal(goalIdToArchive)
+      const result = await archiveGoal(goalIdToArchive)
       
       if (result.success && result.archivedGoal) {
         // 保存归档的数据用于undo
@@ -210,12 +213,12 @@ function DashboardContent() {
   }
 
   // 处理Undo恢复（从归档恢复）
-  const handleUndoDelete = () => {
+  const handleUndoDelete = async () => {
     if (!deletedGoalData) return
 
     // 如果目标是 archived 状态，使用 restoreFromArchive
     if (deletedGoalData.goal.status === 'archived') {
-      const success = restoreFromArchive(deletedGoalData.goal.id)
+      const success = await restoreFromArchive(deletedGoalData.goal.id)
       if (success) {
         setDeletedGoalData(null)
         setToastMessage('目标已恢复')
@@ -223,7 +226,7 @@ function DashboardContent() {
       }
     } else {
       // 兼容旧逻辑（如果目标被完全删除）
-      const success = restoreGoal(deletedGoalData.goal, deletedGoalData.records)
+      const success = await restoreGoal(deletedGoalData.goal, deletedGoalData.records)
       if (success) {
         setDeletedGoalData(null)
         setToastMessage('目标已恢复')
@@ -233,9 +236,9 @@ function DashboardContent() {
   }
 
   // 处理重置数据
-  const handleResetData = () => {
+  const handleResetData = async () => {
     if (confirm('确定要重置所有数据吗？此操作不可恢复。')) {
-      resetData()
+      await resetData()
       router.replace('/onboarding')
       setShowMenu(false)
     }
@@ -423,6 +426,12 @@ function DashboardContent() {
                 >
                   重置数据
                 </button>
+                <button
+                  onClick={signOut}
+                  className="w-full text-left px-4 py-2 text-sm text-foreground hover:bg-accent rounded-lg"
+                >
+                  登出
+                </button>
               </div>
             )}
           </div>
@@ -600,12 +609,14 @@ function DashboardContent() {
 // Dashboard 主组件，使用 Suspense 包裹 useSearchParams
 export default function Dashboard() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-muted-foreground">加载中...</div>
-      </div>
-    }>
-      <DashboardContent />
-    </Suspense>
+    <AuthGuard>
+      <Suspense fallback={
+        <div className="min-h-screen bg-background flex items-center justify-center">
+          <div className="text-muted-foreground">加载中...</div>
+        </div>
+      }>
+        <DashboardContent />
+      </Suspense>
+    </AuthGuard>
   )
 }
