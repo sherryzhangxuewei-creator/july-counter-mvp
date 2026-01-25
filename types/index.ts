@@ -1,6 +1,9 @@
 // 目标周期类型
 export type GoalPeriod = 'year' | 'month' | 'custom'
 
+// 目标状态类型
+export type GoalStatus = 'active' | 'archived'
+
 // 目标模板类型
 export type GoalTemplate = {
   id: string
@@ -22,6 +25,8 @@ export interface Goal {
   endDate?: string
   incrementValue: number // 每次记录增加的值（1 或 0.5）
   createdAt: string
+  status?: GoalStatus // 目标状态，默认为 'active'
+  archivedAt?: string // 归档时间
 }
 
 // 记录接口

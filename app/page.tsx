@@ -29,9 +29,13 @@ function DashboardContent() {
   const recordButtonRef = useRef<HTMLButtonElement>(null)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [deletedGoalData, setDeletedGoalData] = useState<{ goal: any; records: any[] } | null>(null)
+  const [deletingGoalId, setDeletingGoalId] = useState<string | null>(null)
   
   const {
     goals,
+    records,
+    activeGoals,
     currentGoal,
     currentGoalId,
     currentGoalRecords,
@@ -39,31 +43,34 @@ function DashboardContent() {
     isLoading,
     setCurrentGoalId,
     addRecord,
-    deleteGoal,
+    archiveGoal,
+    restoreFromArchive,
+    restoreGoal,
+    getGoalStats,
     resetData,
   } = useGoals()
 
-  // 首次访问检查：如果没有完成 onboarding 或没有目标，跳转到 onboarding
+  // 首次访问检查：如果没有完成 onboarding 或没有 active 目标，跳转到 onboarding
   useEffect(() => {
     if (!isLoading) {
       // 如果 URL 中有 newGoal 参数，说明刚创建了目标，不要跳转回 onboarding
       const isNewGoal = searchParams.get('newGoal') === 'true'
-      if (!isNewGoal && (onboardingCompleted === false || goals.length === 0)) {
+      if (!isNewGoal && (onboardingCompleted === false || activeGoals.length === 0)) {
         router.replace('/onboarding')
       }
     }
-  }, [isLoading, onboardingCompleted, goals.length, router, searchParams])
+  }, [isLoading, onboardingCompleted, activeGoals.length, router, searchParams])
 
-  // 监听目标列表变化：如果删除后没有目标了，跳转到 onboarding
+  // 监听目标列表变化：如果归档后没有 active 目标了，跳转到 onboarding
   useEffect(() => {
-    if (!isLoading && goals.length === 0 && onboardingCompleted === true) {
-      // 延迟一下，避免与删除操作的跳转冲突
+    if (!isLoading && activeGoals.length === 0 && onboardingCompleted === true) {
+      // 延迟一下，避免与归档操作的跳转冲突
       const timer = setTimeout(() => {
         router.replace('/onboarding')
       }, 200)
       return () => clearTimeout(timer)
     }
-  }, [goals.length, isLoading, onboardingCompleted, router])
+  }, [activeGoals.length, isLoading, onboardingCompleted, router])
 
   // 点击外部关闭菜单
   useEffect(() => {
@@ -159,36 +166,69 @@ function DashboardContent() {
   }, [])
 
 
-  // 处理删除目标
+  // 处理归档目标（End goal）
   const handleDeleteGoal = async () => {
     if (!currentGoal) return
 
     setIsDeleting(true)
+    setDeletingGoalId(currentGoal.id)
     
     try {
-      // 保存目标名称用于提示
-      const goalName = currentGoal.name
-      const goalIdToDelete = currentGoal.id
-      const remainingGoalsCount = goals.length - 1
+      const goalIdToArchive = currentGoal.id
       
-      const success = deleteGoal(goalIdToDelete)
+      // 延迟一下，让动画先播放
+      await new Promise(resolve => setTimeout(resolve, 350))
       
-      if (success) {
+      const result = archiveGoal(goalIdToArchive)
+      
+      if (result.success && result.archivedGoal) {
+        // 保存归档的数据用于undo
+        const goalRecords = records.filter((r: any) => r.goalId === goalIdToArchive)
+        setDeletedGoalData({
+          goal: result.archivedGoal,
+          records: goalRecords,
+        })
+        
         setShowDeleteDialog(false)
         setShowMenu(false)
-        setToastMessage(`已删除目标：${goalName}`)
+        setToastMessage(`Goal archived. You can find it in Archived goals.`)
         setShowToast(true)
-        // 删除后跳转逻辑由 useEffect 处理
+        // 归档后跳转逻辑由 useEffect 处理
       } else {
-        setToastMessage('删除失败，请重试')
+        setToastMessage('归档目标失败，请重试')
         setShowToast(true)
       }
     } catch (error) {
-      console.error('Failed to delete goal:', error)
-      setToastMessage('删除失败，请重试')
+      console.error('Failed to archive goal:', error)
+      setToastMessage('归档目标失败，请重试')
       setShowToast(true)
     } finally {
       setIsDeleting(false)
+      // 延迟清除deletingGoalId，确保动画完成
+      setTimeout(() => setDeletingGoalId(null), 100)
+    }
+  }
+
+  // 处理Undo恢复（从归档恢复）
+  const handleUndoDelete = () => {
+    if (!deletedGoalData) return
+
+    // 如果目标是 archived 状态，使用 restoreFromArchive
+    if (deletedGoalData.goal.status === 'archived') {
+      const success = restoreFromArchive(deletedGoalData.goal.id)
+      if (success) {
+        setDeletedGoalData(null)
+        setToastMessage('目标已恢复')
+        setShowToast(true)
+      }
+    } else {
+      // 兼容旧逻辑（如果目标被完全删除）
+      const success = restoreGoal(deletedGoalData.goal, deletedGoalData.records)
+      if (success) {
+        setDeletedGoalData(null)
+        setToastMessage('目标已恢复')
+        setShowToast(true)
+      }
     }
   }
 
@@ -244,7 +284,7 @@ function DashboardContent() {
   // 如果正在加载或需要跳转，显示加载状态
   // 如果 URL 中有 newGoal 参数，说明刚创建了目标，给更多时间加载数据
   const isNewGoal = searchParams.get('newGoal') === 'true'
-  const shouldShowLoading = isLoading || (!isNewGoal && (onboardingCompleted === false || goals.length === 0))
+  const shouldShowLoading = isLoading || (!isNewGoal && (onboardingCompleted === false || activeGoals.length === 0))
   
   if (shouldShowLoading) {
     return (
@@ -262,22 +302,38 @@ function DashboardContent() {
       <Toast
         message={toastMessage}
         isVisible={showToast}
-        onClose={() => setShowToast(false)}
-        duration={6000}
+        onClose={() => {
+          setShowToast(false)
+          // 清除undo数据（Toast关闭后不再支持undo）
+          if (deletedGoalData) {
+            setTimeout(() => setDeletedGoalData(null), 100)
+          }
+        }}
+        duration={8000}
+        showUndo={!!deletedGoalData}
+        onUndo={handleUndoDelete}
       />
       
       {/* 删除确认对话框 */}
-      <ConfirmDialog
-        isOpen={showDeleteDialog}
-        title="删除此目标？"
-        description="此操作无法撤销，将删除该目标及其所有记录。"
-        confirmText="删除"
-        cancelText="取消"
-        confirmVariant="destructive"
-        onConfirm={handleDeleteGoal}
-        onCancel={() => setShowDeleteDialog(false)}
-        isLoading={isDeleting}
-      />
+      {currentGoal && (
+        <ConfirmDialog
+          isOpen={showDeleteDialog}
+          title="Say goodbye to this goal?"
+          description={
+            <span>
+              You worked on this goal for <span className="font-semibold">{getGoalStats(currentGoal.id)?.daysSinceCreation || 0} days</span>.
+            </span>
+          }
+          stats={getGoalStats(currentGoal.id) || undefined}
+          confirmText="End goal"
+          cancelText="Keep it"
+          confirmVariant="soft-destructive"
+          onConfirm={handleDeleteGoal}
+          onCancel={() => setShowDeleteDialog(false)}
+          isLoading={isDeleting}
+          enableDoubleConfirm={true}
+        />
+      )}
       
       <div className="flex h-screen">
         {/* 左侧目标列表 */}
@@ -294,23 +350,36 @@ function DashboardContent() {
           </div>
           
           <div className="flex-1 overflow-y-auto p-2">
-            {goals.length === 0 ? (
+            {activeGoals.length === 0 ? (
               <div className="text-center text-muted-foreground text-sm py-8">
                 <p>还没有目标</p>
                 <p className="mt-2">点击上方按钮创建第一个目标</p>
               </div>
             ) : (
               <div className="space-y-1">
-                {goals.map(goal => (
+                {activeGoals.map(goal => (
                   <SidebarItem
                     key={goal.id}
                     goal={goal}
                     isActive={goal.id === currentGoalId}
                     onClick={() => setCurrentGoalId(goal.id)}
+                    isDeleting={deletingGoalId === goal.id}
                   />
                 ))}
               </div>
             )}
+          </div>
+
+          {/* 左下角 My profile 按钮 */}
+          <div className="p-4 border-t border-border">
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={() => router.push('/profile')}
+            >
+              My profile
+            </Button>
           </div>
         </aside>
 
@@ -334,9 +403,12 @@ function DashboardContent() {
                       setShowDeleteDialog(true)
                       setShowMenu(false)
                     }}
-                    className="w-full text-left px-4 py-2 text-sm text-destructive hover:bg-accent rounded-lg"
+                    className="w-full text-left px-4 py-2 text-sm text-foreground hover:text-muted-foreground hover:bg-accent rounded-lg flex items-center gap-2"
                   >
-                    删除目标
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    End goal
                   </button>
                 )}
                 <button
@@ -504,7 +576,7 @@ function DashboardContent() {
             <div className="container-desktop py-8">
               <Card className="text-center py-12">
                 <p className="text-muted-foreground mb-4">还没有选择目标</p>
-                {goals.length === 0 ? (
+                {activeGoals.length === 0 ? (
                   <Button
                     variant="primary"
                     onClick={() => router.push('/onboarding')}
