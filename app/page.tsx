@@ -171,8 +171,13 @@ function DashboardContent() {
 
   // 处理归档目标（End goal）
   const handleDeleteGoal = async () => {
-    if (!currentGoal) return
+    console.log('handleDeleteGoal called, currentGoal:', currentGoal)
+    if (!currentGoal) {
+      console.log('No current goal, returning')
+      return
+    }
 
+    console.log('Starting archive process for goal:', currentGoal.id)
     setIsDeleting(true)
     setDeletingGoalId(currentGoal.id)
     

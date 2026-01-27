@@ -7,7 +7,30 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 // 检查是否是占位符值
 const isPlaceholder = (value: string | undefined) => {
   if (!value) return true
-  return value.includes('your_supabase') || value.includes('your-project-id')
+  return value.includes('your_supabase') || 
+         value.includes('your-project-id') || 
+         value.includes('placeholder')
+}
+
+// 验证 Supabase URL 格式
+const isValidSupabaseUrl = (url: string | undefined) => {
+  if (!url) return false
+  try {
+    const urlObj = new URL(url)
+    return urlObj.hostname.includes('supabase.co') || urlObj.hostname.includes('supabase.in')
+  } catch {
+    return false
+  }
+}
+
+// 验证 Supabase Key 格式（支持 JWT 格式和 publishable key 格式）
+const isValidSupabaseKey = (key: string | undefined) => {
+  if (!key) return false
+  // JWT 格式（以 eyJ 开头）
+  if (key.startsWith('eyJ')) return true
+  // Publishable key 格式（以 sb_publishable_ 开头）
+  if (key.startsWith('sb_publishable_')) return true
+  return false
 }
 
 // 开发环境调试：检查环境变量是否加载
@@ -36,12 +59,16 @@ let supabase: ReturnType<typeof createClient>
 // 检查是否是构建时（SSR/SSG）
 const isBuildTime = typeof window === 'undefined' && (process.env.NEXT_PHASE === 'phase-production-build' || process.env.NODE_ENV === 'production')
 
-if (!supabaseUrl || !supabaseAnonKey || isPlaceholder(supabaseUrl) || isPlaceholder(supabaseAnonKey)) {
+// 验证环境变量
+const isUrlValid = supabaseUrl && !isPlaceholder(supabaseUrl) && isValidSupabaseUrl(supabaseUrl)
+const isKeyValid = supabaseAnonKey && !isPlaceholder(supabaseAnonKey) && isValidSupabaseKey(supabaseAnonKey)
+
+if (!isUrlValid || !isKeyValid) {
   const missing = []
-  if (!supabaseUrl || isPlaceholder(supabaseUrl)) {
+  if (!supabaseUrl || isPlaceholder(supabaseUrl) || !isValidSupabaseUrl(supabaseUrl)) {
     missing.push('NEXT_PUBLIC_SUPABASE_URL')
   }
-  if (!supabaseAnonKey || isPlaceholder(supabaseAnonKey)) {
+  if (!supabaseAnonKey || isPlaceholder(supabaseAnonKey) || !isValidSupabaseKey(supabaseAnonKey)) {
     missing.push('NEXT_PUBLIC_SUPABASE_ANON_KEY')
   }
   
@@ -80,6 +107,10 @@ if (!supabaseUrl || !supabaseAnonKey || isPlaceholder(supabaseUrl) || isPlacehol
     throw new Error(errorMessage)
   }
 } else {
+  // 验证通过，创建 Supabase 客户端
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error('Supabase URL and Key must be provided')
+  }
   supabase = createClient(supabaseUrl, supabaseAnonKey)
 }
 

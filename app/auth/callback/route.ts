@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import type { NextRequest } from 'next/server'
 
+// 静态导出 (output: 'export') 要求路由声明为 force-static 或提供 revalidate
+export const dynamic = 'force-static'
+
 export async function GET(request: NextRequest) {
   const url = new URL(request.url)
   const code = url.searchParams.get('code')

@@ -68,8 +68,11 @@ export default function ConfirmDialog({
 
   const handleConfirmClick = () => {
     if (enableDoubleConfirm && !showDoubleConfirm) {
+      // 第一次点击：显示二次确认
       setShowDoubleConfirm(true)
     } else {
+      // 第二次点击（或没有启用二次确认）：执行确认操作
+      console.log('ConfirmDialog: Calling onConfirm')
       onConfirm()
     }
   }
@@ -141,7 +144,7 @@ export default function ConfirmDialog({
                 <span className="relative z-10">Yes, I'm ready</span>
                 {confirmButtonProgress > 0 && (
                   <div
-                    className="absolute inset-0 bg-current opacity-20 transition-all duration-75"
+                    className="absolute inset-0 bg-current opacity-20 transition-all duration-75 pointer-events-none"
                     style={{
                       width: `${confirmButtonProgress}%`,
                       transition: 'width 75ms linear',

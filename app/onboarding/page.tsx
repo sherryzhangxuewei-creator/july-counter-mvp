@@ -76,43 +76,50 @@ export default function Onboarding() {
 
   // Step 3: 创建目标
   const handleCreateGoal = async () => {
-    let startDate: string | undefined
-    let endDate: string | undefined
+    try {
+      let startDate: string | undefined
+      let endDate: string | undefined
 
-    if (formData.period === 'year') {
-      const now = new Date()
-      startDate = new Date(now.getFullYear(), 0, 1).toISOString()
-      endDate = new Date(now.getFullYear() + 1, 0, 1).toISOString()
-    } else if (formData.period === 'month') {
-      const now = new Date()
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString()
-    } else {
-      startDate = customStartDate ? new Date(customStartDate).toISOString() : undefined
-      endDate = customEndDate ? new Date(customEndDate).toISOString() : undefined
+      if (formData.period === 'year') {
+        const now = new Date()
+        startDate = new Date(now.getFullYear(), 0, 1).toISOString()
+        endDate = new Date(now.getFullYear() + 1, 0, 1).toISOString()
+      } else if (formData.period === 'month') {
+        const now = new Date()
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+        endDate = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString()
+      } else {
+        startDate = customStartDate ? new Date(customStartDate).toISOString() : undefined
+        endDate = customEndDate ? new Date(customEndDate).toISOString() : undefined
+      }
+
+      const newGoal: Goal = {
+        id: `goal-${Date.now()}`,
+        name: formData.name,
+        unit: formData.unit,
+        targetAmount: formData.targetAmount,
+        completedAmount: 0,
+        period: formData.period,
+        startDate,
+        endDate,
+        incrementValue: formData.incrementValue,
+        createdAt: new Date().toISOString(),
+      }
+
+      console.log('Creating goal:', newGoal)
+      await addGoal(newGoal)
+      console.log('Goal created successfully')
+      completeOnboarding()
+      
+      // 确保数据写入完成后再跳转，避免竞态条件
+      // 使用 setTimeout 确保状态更新完成
+      setTimeout(() => {
+        router.replace(`/?newGoal=true&goalName=${encodeURIComponent(formData.name)}`)
+      }, 100)
+    } catch (error) {
+      console.error('Failed to create goal:', error)
+      alert(`创建目标失败: ${error instanceof Error ? error.message : '未知错误'}\n\n请检查控制台获取更多信息。`)
     }
-
-    const newGoal: Goal = {
-      id: `goal-${Date.now()}`,
-      name: formData.name,
-      unit: formData.unit,
-      targetAmount: formData.targetAmount,
-      completedAmount: 0,
-      period: formData.period,
-      startDate,
-      endDate,
-      incrementValue: formData.incrementValue,
-      createdAt: new Date().toISOString(),
-    }
-
-    await addGoal(newGoal)
-    completeOnboarding()
-    
-    // 确保数据写入完成后再跳转，避免竞态条件
-    // 使用 setTimeout 确保状态更新完成
-    setTimeout(() => {
-      router.replace(`/?newGoal=true&goalName=${encodeURIComponent(formData.name)}`)
-    }, 100)
   }
 
   const handleNext = () => {

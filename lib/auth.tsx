@@ -85,13 +85,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
-    })
-    return { data, error }
+    try {
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+        },
+      })
+      
+      // 如果有错误，直接返回
+      if (error) {
+        console.error('Google OAuth error:', error)
+        return { data, error }
+      }
+      
+      // 如果成功，data.url 应该包含重定向 URL
+      // 但在浏览器环境中，Supabase 通常会自动重定向
+      // 如果没有自动重定向，可以手动处理
+      if (data?.url) {
+        // 在浏览器中，通常会自动跳转，但为了保险可以手动处理
+        window.location.href = data.url
+      }
+      
+      return { data, error: null }
+    } catch (err: any) {
+      console.error('Google OAuth exception:', err)
+      return {
+        data: null,
+        error: {
+          message: err.message || 'Google 登录失败，请重试',
+        },
+      }
+    }
   }
 
   const signOut = async () => {

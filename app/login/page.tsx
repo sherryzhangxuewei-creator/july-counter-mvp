@@ -86,37 +86,53 @@ function LoginContent() {
 
   const handleGoogleSignIn = async () => {
     setIsLoading(true)
-    const { error } = await signInWithGoogle()
-    setIsLoading(false)
-
-    if (error) {
-      // 如果是配置错误，显示更详细的提示
-      if (error.message?.includes('环境变量未配置')) {
-        setMessage(
-          '⚠️  Supabase 未配置\n\n' +
-          '请按以下步骤配置：\n' +
-          '1. 访问 https://app.supabase.com\n' +
-          '2. 创建项目并进入 Settings > API\n' +
-          '3. 复制 Project URL 和 anon key\n' +
-          '4. 更新 .env.local 文件\n' +
-          '5. 重启开发服务器'
-        )
-      } else if (error.message?.includes('provider is not enabled') || error.message?.includes('Unsupported provider')) {
-        setMessage(
-          '⚠️  Google 登录未启用\n\n' +
-          '请在 Supabase Dashboard 中启用：\n' +
-          '1. 访问 https://app.supabase.com\n' +
-          '2. 进入 Authentication > Providers\n' +
-          '3. 找到 Google 并点击启用\n' +
-          '4. 配置 Google OAuth（需要 Google Cloud Console）\n' +
-          '5. 添加 Redirect URL: http://localhost:3000/auth/callback'
-        )
+    try {
+      const { data, error } = await signInWithGoogle()
+      
+      if (error) {
+        setIsLoading(false)
+        console.error('Google OAuth error:', error)
+        // 如果是配置错误，显示更详细的提示
+        if (error.message?.includes('环境变量未配置')) {
+          setMessage(
+            '⚠️  Supabase 未配置\n\n' +
+            '请按以下步骤配置：\n' +
+            '1. 访问 https://app.supabase.com\n' +
+            '2. 创建项目并进入 Settings > API\n' +
+            '3. 复制 Project URL 和 anon key\n' +
+            '4. 更新 .env.local 文件\n' +
+            '5. 重启开发服务器'
+          )
+        } else if (error.message?.includes('provider is not enabled') || error.message?.includes('Unsupported provider')) {
+          setMessage(
+            '⚠️  Google 登录未启用\n\n' +
+            '请在 Supabase Dashboard 中启用：\n' +
+            '1. 访问 https://app.supabase.com\n' +
+            '2. 进入 Authentication > Providers\n' +
+            '3. 找到 Google 并点击启用\n' +
+            '4. 配置 Google OAuth（需要 Google Cloud Console）\n' +
+            '5. 添加 Redirect URL: http://localhost:3000/auth/callback'
+          )
+        } else {
+          setMessage(`Google 登录失败: ${error.message || '未知错误'}`)
+        }
+        setShowToast(true)
+      } else if (data?.url) {
+        // 如果返回了 URL，手动跳转（虽然 Supabase 通常会自动跳转）
+        console.log('Redirecting to:', data.url)
+        window.location.href = data.url
+        // 不设置 isLoading 为 false，因为即将跳转
       } else {
-        setMessage(`Google 登录失败: ${error.message}`)
+        // 没有错误也没有 URL，可能是自动跳转了
+        console.log('OAuth initiated, waiting for redirect...')
+        // 不设置 isLoading 为 false，等待跳转
       }
+    } catch (err: any) {
+      setIsLoading(false)
+      console.error('Google OAuth exception:', err)
+      setMessage(`Google 登录失败: ${err.message || '未知错误'}`)
       setShowToast(true)
     }
-    // OAuth 会跳转到 Google，不需要显示成功消息
   }
 
   return (
