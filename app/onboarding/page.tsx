@@ -155,6 +155,8 @@ export default function Onboarding() {
   const handlePrev = () => {
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1)
+    } else {
+      router.push('/')
     }
   }
 
@@ -341,7 +343,6 @@ export default function Onboarding() {
               <Button
                 variant="outline"
                 onClick={handlePrev}
-                disabled={currentStep === 1}
               >
                 上一步
               </Button>
