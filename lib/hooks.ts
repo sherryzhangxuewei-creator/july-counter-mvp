@@ -184,8 +184,18 @@ export function useGoals() {
   }
 
   // 添加记录
-  const addRecord = async (goalId: string, value: number) => {
-    if (!user) return
+  // 【新增】返回 { isNowComplete } 表示是否刚好达成目标
+  const addRecord = async (goalId: string, value: number): Promise<{ isNowComplete: boolean }> => {
+    if (!user) return { isNowComplete: false }
+
+    // 【新增】后端级别上限校验：防止 completedAmount 超过 targetAmount
+    const goal = goals.find(g => g.id === goalId)
+    if (!goal) return { isNowComplete: false }
+    if (goal.completedAmount >= goal.targetAmount) {
+      throw new Error('GOAL_LIMIT_REACHED')
+    }
+    // 【新增】clamp：即使 incrementValue 会超出，也只加到上限
+    const actualValue = Math.min(value, goal.targetAmount - goal.completedAmount)
 
     try {
       const now = new Date()
@@ -196,7 +206,7 @@ export function useGoals() {
         .insert({
           user_uuid: user.id,
           goal_id: goalId,
-          value,
+          value: actualValue,
           timestamp: now.toISOString(),
           date,
         })
@@ -218,12 +228,11 @@ export function useGoals() {
       setRecords(prev => [newRecord, ...prev])
 
       // 更新目标的完成数量
-      const goal = goals.find(g => g.id === goalId)
-      if (goal) {
-        await updateGoal(goalId, {
-          completedAmount: goal.completedAmount + value,
-        })
-      }
+      const newCompleted = goal.completedAmount + actualValue
+      await updateGoal(goalId, { completedAmount: newCompleted })
+
+      // 【新增】返回是否刚好完成目标
+      return { isNowComplete: newCompleted >= goal.targetAmount }
     } catch (error) {
       console.error('Failed to add record:', error)
       throw error
