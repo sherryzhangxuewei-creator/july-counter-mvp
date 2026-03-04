@@ -9,6 +9,7 @@ import Button from '@/components/Button'
 import Progress from '@/components/Progress'
 import Toast from '@/components/Toast'
 import ConfirmDialog from '@/components/ConfirmDialog'
+import CelebrationCard from '@/components/CelebrationCard'
 import AuthGuard from '@/components/AuthGuard'
 import { useAuth } from '@/lib/auth'
 
@@ -33,6 +34,15 @@ function DashboardContent() {
   const [isDeleting, setIsDeleting] = useState(false)
   const [deletedGoalData, setDeletedGoalData] = useState<{ goal: any; records: any[] } | null>(null)
   const [deletingGoalId, setDeletingGoalId] = useState<string | null>(null)
+  // 【新增】庆祝卡片相关状态
+  const [showCelebration, setShowCelebration] = useState(false)
+  const [celebrationGoal, setCelebrationGoal] = useState<{ id: string; name: string; startTime: string } | null>(null)
+  // 【新增】防止同一目标重复弹庆祝（session 内）
+  const celebratedGoalsRef = useRef<Set<string>>(new Set())
+  // 【新增】防止按钮连点
+  const [isRecording, setIsRecording] = useState(false)
+  // 【新增】My Profile 按钮的 ref，用于收纳动画的目标位置
+  const profileButtonRef = useRef<HTMLButtonElement>(null)
   const { signOut } = useAuth()
   
   const {
@@ -113,16 +123,37 @@ function DashboardContent() {
     }
   }, [highlightRecordButton])
 
-  // 处理记录一次（带树摇晃动画）
-  const handleRecord = async () => {
-    if (currentGoal) {
-      await addRecord(currentGoal.id, currentGoal.incrementValue)
-      setHighlightRecordButton(false) // 记录后取消高亮
+  // 处理记录一次（写入数据，返回是否刚好完成）
+  const handleRecord = async (): Promise<boolean> => {
+    if (!currentGoal) return false
+    try {
+      const result = await addRecord(currentGoal.id, currentGoal.incrementValue)
+      setHighlightRecordButton(false)
+      return result?.isNowComplete ?? false
+    } catch (error: any) {
+      if (error?.message === 'GOAL_LIMIT_REACHED') {
+        setToastMessage('你已完成全部目标，无法继续打卡 🎯')
+        setShowToast(true)
+      }
+      return false
     }
   }
 
   // 点击记录：先触发动效，再写入记录
-  const handleRecordWithFx = () => {
+  // 【修改】增加上限拦截 + 连点防护 + 完成时触发庆祝卡
+  const handleRecordWithFx = async () => {
+    // 【新增】防止连续点击
+    if (isRecording) return
+
+    // 【新增】前端上限校验：已完成则拦截并提示
+    if (!currentGoal || currentGoal.completedAmount >= currentGoal.targetAmount) {
+      setToastMessage('你已完成全部目标，无法继续打卡 🎯')
+      setShowToast(true)
+      return
+    }
+
+    setIsRecording(true)
+
     // 触发树摇晃（用 class 切换，避免 remount 导致白屏）
     setIsTreeShaking(true)
     if (shakeTimerRef.current) window.clearTimeout(shakeTimerRef.current)
@@ -131,21 +162,44 @@ function DashboardContent() {
     // 触发 GIF 播放：重置 GIF 到第一帧
     setRecordImageError(false)
     setIsGifLoaded(false)
-    
-    // 更新 token 来重置 GIF，开始加载
     setRecordGifToken((t) => t + 1)
-    
-    // 标记开始播放 GIF
     setIsRecordGifPlaying(true)
-    
-    // 清理之前的结束 timer
     if (gifTimerRef.current) window.clearTimeout(gifTimerRef.current)
-    // 7 秒后切回静态图（GIF 实际时长 6秒 + 缓冲）
     gifTimerRef.current = window.setTimeout(() => {
       setIsRecordGifPlaying(false)
     }, 7000)
-    
-    handleRecord()
+
+    // 【新增】记录快照（避免异步后 currentGoal 变化导致闭包读旧值）
+    const goalSnapshot = currentGoal
+
+    try {
+      const isNowComplete = await handleRecord()
+
+      // 【新增】如果刚刚完成目标，且本 session 内未弹过庆祝
+      if (isNowComplete && !celebratedGoalsRef.current.has(goalSnapshot.id)) {
+        celebratedGoalsRef.current.add(goalSnapshot.id)
+        // 延迟 600ms，让树摇晃动画先播完
+        setTimeout(() => {
+          setCelebrationGoal({
+            id: goalSnapshot.id,
+            name: goalSnapshot.name,
+            startTime: goalSnapshot.startDate || goalSnapshot.createdAt,
+          })
+          setShowCelebration(true)
+        }, 600)
+      }
+    } finally {
+      setIsRecording(false)
+    }
+  }
+
+  // 【新增】关闭庆祝卡片：动画结束后归档目标
+  const handleCelebrationClose = async () => {
+    setShowCelebration(false)
+    if (celebrationGoal) {
+      await archiveGoal(celebrationGoal.id)
+      setCelebrationGoal(null)
+    }
   }
 
   // 组件卸载时清理 timer
@@ -322,6 +376,16 @@ function DashboardContent() {
         onUndo={handleUndoDelete}
       />
       
+      {/* 【新增】庆祝卡片 */}
+      {showCelebration && celebrationGoal && (
+        <CelebrationCard
+          goalName={celebrationGoal.name}
+          startTime={celebrationGoal.startTime}
+          profileButtonRef={profileButtonRef}
+          onClose={handleCelebrationClose}
+        />
+      )}
+
       {/* 删除确认对话框 */}
       {currentGoal && (
         <ConfirmDialog
@@ -378,9 +442,10 @@ function DashboardContent() {
             )}
           </div>
 
-          {/* 左下角 My profile 按钮 */}
+          {/* 左下角 My profile 按钮 — ref 用于庆祝卡片的收纳动画目标位置 */}
           <div className="p-4 border-t border-border">
             <Button
+              ref={profileButtonRef}
               variant="outline"
               size="sm"
               className="w-full"
@@ -480,10 +545,20 @@ function DashboardContent() {
               </div>
 
               {/* 主按钮：记录一次 */}
+              {/* 【新增】达到上限时显示已完成提示，替换记录按钮 */}
               <div className="flex flex-col items-center mt-24 mb-12">
+                {currentGoal.completedAmount >= currentGoal.targetAmount ? (
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="w-36 h-36 rounded-lg bg-accent flex items-center justify-center shadow-xl opacity-60">
+                      <span className="text-5xl">✅</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">目标已完成</p>
+                  </div>
+                ) : (
                 <button
                   ref={recordButtonRef}
                   onClick={handleRecordWithFx}
+                  disabled={isRecording}
                   className={`
                     w-36 h-36
                     bg-transparent
@@ -495,6 +570,7 @@ function DashboardContent() {
                     overflow-hidden
                     relative
                     ${isTreeShaking ? 'tree-shake' : ''}
+                    ${isRecording ? 'opacity-70 cursor-not-allowed' : ''}
                   `}
                   style={{
                     transformOrigin: '50% 100%'
@@ -550,7 +626,10 @@ function DashboardContent() {
                   )}
 
                 </button>
-                <p className="mt-3 text-sm text-muted-foreground">点我记录一次</p>
+                )}
+                {currentGoal.completedAmount < currentGoal.targetAmount && (
+                  <p className="mt-3 text-sm text-muted-foreground">点我记录一次</p>
+                )}
               </div>
 
               {/* 进度条 */}

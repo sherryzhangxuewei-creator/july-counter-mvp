@@ -145,3 +145,41 @@
 .tree-shake {
   animation: tree-shake 600ms ease-in-out;
 }
+
+/* 庆祝卡片入场动画 */
+@keyframes celebration-enter {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.04);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.celebration-enter {
+  animation: celebration-enter 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* 庆祝图标弹跳动画 */
+@keyframes celebration-bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-14px);
+  }
+  60% {
+    transform: translateY(-6px);
+  }
+}
+
+.celebration-bounce {
+  animation: celebration-bounce 0.8s ease-in-out 0.3s both;
+  display: inline-block;
+}

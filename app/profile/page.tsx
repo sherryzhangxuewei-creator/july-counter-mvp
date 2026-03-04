@@ -30,6 +30,15 @@ export default function ProfilePage() {
   return (
     <AuthGuard>
       <div className="min-h-screen bg-background">
+        <div className="fixed top-4 left-4 z-50">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => router.push('/')}
+          >
+            Back to Home
+          </Button>
+        </div>
         <div className="container-desktop py-8">
           <div className="max-w-4xl mx-auto">
             {/* 用户基础信息区 */}
@@ -55,13 +64,6 @@ export default function ProfilePage() {
                 <h2 className="text-xl font-semibold text-foreground">
                   Archived Goals
                 </h2>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => router.push('/')}
-                >
-                  Back to Home
-                </Button>
               </div>
 
               {archivedGoals.length === 0 ? (
