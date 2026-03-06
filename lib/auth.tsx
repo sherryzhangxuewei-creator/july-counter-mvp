@@ -15,7 +15,7 @@ interface AuthContextType {
 }
 
 // 检查 Supabase 配置是否有效
-const isSupabaseConfigured = () => {
+export const isSupabaseConfigured = () => {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   

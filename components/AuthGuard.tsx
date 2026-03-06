@@ -2,7 +2,7 @@
 
 import { useEffect, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
-import { useAuth } from '@/lib/auth'
+import { useAuth, isSupabaseConfigured } from '@/lib/auth'
 
 interface AuthGuardProps {
   children: ReactNode
@@ -11,12 +11,18 @@ interface AuthGuardProps {
 export default function AuthGuard({ children }: AuthGuardProps) {
   const { user, loading } = useAuth()
   const router = useRouter()
+  const demoMode = !isSupabaseConfigured()
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (!demoMode && !loading && !user) {
       router.push('/login')
     }
-  }, [user, loading, router])
+  }, [demoMode, user, loading, router])
+
+  // Demo 模式：Supabase 未配置时跳过鉴权，直接渲染子页面
+  if (demoMode) {
+    return <>{children}</>
+  }
 
   if (loading) {
     return (

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useAuth } from '@/lib/auth'
+import { useAuth, isSupabaseConfigured } from '@/lib/auth'
 import Card from '@/components/Card'
 import Button from '@/components/Button'
 import Input from '@/components/Input'
@@ -85,6 +85,12 @@ function LoginContent() {
   }
 
   const handleGoogleSignIn = async () => {
+    // Demo 模式：Supabase 未配置时直接跳转到 dashboard
+    if (!isSupabaseConfigured()) {
+      router.push('/')
+      return
+    }
+
     setIsLoading(true)
     try {
       const { data, error } = await signInWithGoogle()
